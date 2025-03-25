@@ -17,7 +17,7 @@
 
 #define speed_increment 100
 #define position_increment 4000
-#define touch_cooldown 500
+#define touch_cooldown 1000
 
 // _____VARIABLES_____
 int touch_pins[touch_no] = {27, 32, 33};
@@ -34,10 +34,6 @@ int target_position = 0;
 HX711 scale;
 float calibration_factor = 404990.00;
 float weight_grams = 0;
-
-// FreeRTOS Task Handles
-TaskHandle_t Task1;
-TaskHandle_t Task2;
 
 // _____FUNCTIONS_____
 void update_LCD(int, int, bool, float);
@@ -69,66 +65,27 @@ void setup() {
   long zero_factor = scale.read_average(); //Get a baseline reading
   Serial.print("Zero factor: "); //This can be used to remove the need to tare the scale. Useful in permanent scale projects.
   Serial.println(zero_factor);
-
-  // Create FreeRTOS tasks
-  xTaskCreatePinnedToCore(
-    Task1code, // Function to implement the task
-    "Task1",   // Name of the task
-    10000,     // Stack size (in words)
-    NULL,      // Task input parameter
-    1,         // Priority (0 is lowest)
-    &Task1,    // Task handle
-    0          // Core where the task should run (0 or 1)
-  );
-
-  xTaskCreatePinnedToCore(
-    Task2code, // Function to implement the task
-    "Task2",   // Name of the task
-    10000,     // Stack size (in words)
-    NULL,      // Task input parameter
-    1,         // Priority (0 is lowest)
-    &Task2,    // Task handle
-    1          // Core where the task should run (0 or 1)
-  );
 }
 
 void loop() {
-  // Empty. FreeRTOS tasks handle everything.
-}
+  touched();
+  scale.set_scale(calibration_factor);
+  //update_loadcell();
 
-// Task 1: Main logic (LCD, touch, etc.)
-void Task1code(void* pvParameters) {
-  for (;;) {
-    touched();
-    scale.set_scale(calibration_factor);
+  weight_grams = scale.get_units();
+  
+  Serial.println(weight_grams);
+  update_LCD(speed, target_position, change_speed, weight_grams);
 
-    weight_grams = scale.get_units();
-    // Serial.println(weight_grams);
-    update_LCD(speed, target_position, change_speed, weight_grams);
-
-    if (button2_pressed()) {
-      scale.tare();
-    }
-
-    vTaskDelay(10 / portTICK_PERIOD_MS); // Delay to allow other tasks to run
+  if(button2_pressed()){
+    scale.tare();
   }
-}
 
-// Task 2: Stepper motor control
-void Task2code(void* pvParameters) {
-  for (;;) {
-    if (button_pressed()) {
-      Serial.print("speed: ");
-      Serial.print(speed);
-      Serial.print("Pos: ");
-      Serial.print(target_position);
-      stepper.setMaxSpeed(speed);
-      stepper.setAcceleration(speed);
-      stepper.moveTo(target_position);
-      stepper.runToPosition();
-    }
-
-    vTaskDelay(10 / portTICK_PERIOD_MS); // Delay to allow other tasks to run
+  if(button_pressed()){
+    stepper.setMaxSpeed(speed);
+    stepper.setAcceleration(speed);
+    stepper.moveTo(target_position);
+    stepper.runToPosition();
   }
 }
 
@@ -278,4 +235,3 @@ void touched(){
 //     weight_grams = avg_weight;
 //   }
 // }
- 
