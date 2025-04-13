@@ -1,7 +1,7 @@
 // _____LIBRARIES_____
 #include "HX711.h"
 #include <LiquidCrystal.h>
-#include "AccelStepper.h"
+#include <MobaTools.h>
 
 // _____CONSTANTS_____
 #define button_pin 34
@@ -27,13 +27,17 @@ const int touch_thresh = 20;
 LiquidCrystal lcd(19, 23, 18, 17, 16, 15);
 bool change_speed = true;
 
-AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin); 
+// AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin); 
 int speed = 1000;
 int target_position = 0;
+
+const int stepsPerRev = 1000;
+MoToStepper stepper1(stepsPerRev, STEPDIR);
 
 HX711 scale;
 float calibration_factor = 404990.00;
 float weight_grams = 0;
+float current_max = 0;
 
 // _____FUNCTIONS_____
 void update_LCD(int, int, bool, float);
@@ -42,6 +46,7 @@ bool button2_pressed();
 void read_touch();
 void touched();
 void update_loadcell();
+void stepper_timer_setup();
 
 void setup() {
   lcd.begin(16, 2);
@@ -73,19 +78,18 @@ void loop() {
   //update_loadcell();
 
   weight_grams = scale.get_units();
+  current_max=max(weight_grams,current_max );
   
   Serial.println(weight_grams);
-  update_LCD(speed, target_position, change_speed, weight_grams);
+  update_LCD(speed, target_position, change_speed, current_max);
 
   if(button2_pressed()){
     scale.tare();
   }
 
   if(button_pressed()){
-    stepper.setMaxSpeed(speed);
-    stepper.setAcceleration(speed);
-    stepper.moveTo(target_position);
-    stepper.runToPosition();
+    stepper_timer_setup();
+    reset();
   }
 }
 
@@ -94,7 +98,6 @@ void update_LCD(int speed, int position, bool cursor, float weight) {
   static int last_position = -1;
   static float last_weight =-1;
   static bool last_cursor = !cursor; // Invert initial state to force update on first call
-
   // Check if values have changed
   if (speed != last_speed || position != last_position || cursor != last_cursor || weight != last_weight) {
     lcd.setCursor(4, 0);
@@ -111,6 +114,7 @@ void update_LCD(int speed, int position, bool cursor, float weight) {
     lcd.print("     "); // Clear old value
     lcd.setCursor(10, 1);
     lcd.print(weight);
+
     lcd.setCursor(15, 1);
     lcd.print("K");
     
@@ -205,6 +209,26 @@ void touched(){
     }
     // delay(500);
   }
+}
+
+void stepper_timer_setup(){
+  stepper1.attach(stepPin, dirPin);
+  stepper1.setSpeed(speed);              // 30 rev/min (if stepsPerRev is set correctly)
+  stepper1.setRampLen( stepsPerRev / 2); // Ramp length is 1/2 revolution
+  stepper1.rotate(1);
+}
+
+int max(int x, int y){
+    if(x  >  y){
+      return x;
+    }
+    else{
+      return y;
+    }
+}
+
+void reset(){
+  current_max=0;
 }
 
 // void update_loadcell() {
